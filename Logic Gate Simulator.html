@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Logic Gate Simulator</title>
+<style>
+/* ---------- COLOURS (change them here) ---------- */
+:root{
+  --page:#87ceeb;      /* page background - SKY BLUE */
+  --header:#0b6fa4;    /* top bar - deeper sky blue, white text */
+  --card:rgba(255,255,255,.9);  /* boxes */
+  --border:#000;       /* box borders */
+  --text:#000;         /* main text - black */
+  --white:#fff;        /* text on dark areas */
+  --green:#22c55e;     /* GREEN = clicked / ON / 1 (unchanged) */
+  --green-text:#000;
+  --off:#64748b;       /* OFF = 0 */
+  color-scheme:light;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font-family:Arial,Helvetica,sans-serif;line-height:1.45}
+header{background:var(--header);border-bottom:2px solid #000;padding:16px;text-align:center}
+h1{margin:0;font-size:30px;font-weight:800;color:var(--white)}
+header p{margin:6px 0 0;font-size:15px;color:var(--white)}
+main{max-width:640px;margin:0 auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}
+h2{margin:0 0 10px;font-size:22px;font-weight:700;color:var(--text)}
+h3{margin:0 0 6px;font-size:17px;font-weight:700;color:var(--text)}
+.rule p,.explain p{margin:0 0 10px}
+
+/* ---------- GATE BUTTONS ---------- */
+.gates{display:flex;flex-wrap:wrap;gap:8px}
+.gates button{flex:1 1 70px;padding:10px 6px;font-size:15px;font-weight:bold;
+  background:#fff;color:#000;border:2px solid #000;border-radius:6px;cursor:pointer}
+.gates button.active{background:#000;border-color:#000;color:#fff}
+button:focus-visible{outline:3px solid #000;outline-offset:2px}
+
+/* ---------- SIMULATOR ---------- */
+svg{width:100%;height:auto;display:block}
+.wire{stroke:var(--off);stroke-width:4;fill:none}
+.wire.on{stroke:var(--green)}
+.body{fill:#fff;stroke:#000;stroke-width:3}
+.label{fill:var(--text);font-size:20px;font-weight:bold;text-anchor:middle;dominant-baseline:middle}
+.pin{fill:var(--off);stroke:#000;stroke-width:2;cursor:pointer}
+.pin.on{fill:var(--green)}
+.pinText{font-size:18px;font-weight:bold;text-anchor:middle;dominant-baseline:middle;fill:var(--white);pointer-events:none}
+.pin.on + .pinText,.bulb.on + .pinText{fill:var(--green-text)}
+.bulb{fill:var(--off);stroke:#000;stroke-width:2}
+.bulb.on{fill:var(--green)}
+.tip{text-align:center;font-size:14px;margin:6px 0 0}
+.result{text-align:center;font-size:18px;margin:8px 0 0}
+
+/* ---------- TRUTH TABLE ---------- */
+table{width:100%;border-collapse:collapse;text-align:center;font-size:16px}
+th,td{padding:8px;border:1px solid #000}
+th{background:var(--page);color:var(--text)}
+tr.now td{background:var(--green);color:var(--green-text);font-weight:bold}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Logic Gate Simulator</h1>
+  <p>Pick a gate, then click the input circles to switch them 0 / 1.</p>
+</header>
+
+<main>
+  <div class="card">
+    <h2>1. Choose a gate</h2>
+    <div class="gates" id="gateButtons"></div>
+  </div>
+
+  <div class="card">
+    <h2>2. Try it</h2>
+    <div class="rule" id="rule"></div>
+    <svg viewBox="0 0 400 190" role="img" aria-label="Logic gate diagram">
+      <path id="wireA" class="wire" d="M60 60 H150"/>
+      <path id="wireB" class="wire" d="M60 130 H150"/>
+      <path id="wireY" class="wire" d="M250 95 H320"/>
+      <rect class="body" x="150" y="40" width="100" height="110" rx="12"/>
+      <text id="gateName" class="label" x="200" y="95">AND</text>
+      <g id="pinA" tabindex="0" role="button" aria-label="Input A">
+        <circle class="pin" cx="45" cy="60" r="24"/>
+        <text class="pinText" x="45" y="60">0</text>
+      </g>
+      <g id="pinB" tabindex="0" role="button" aria-label="Input B">
+        <circle class="pin" cx="45" cy="130" r="24"/>
+        <text class="pinText" x="45" y="130">0</text>
+      </g>
+      <text class="label" x="45" y="25" style="font-size:16px">A</text>
+      <text class="label" x="45" y="168" style="font-size:16px" id="labelB">B</text>
+      <circle id="bulb" class="bulb" cx="350" cy="95" r="26"/>
+      <text id="outText" class="pinText" x="350" y="95">0</text>
+      <text class="label" x="350" y="145" style="font-size:16px">Output</text>
+    </svg>
+    <p class="tip">Green = ON = 1 &nbsp;|&nbsp; Grey = OFF = 0</p>
+    <p class="result" id="result"></p>
+  </div>
+
+  <div class="card">
+    <h2>3. Truth table</h2>
+    <table id="table"></table>
+  </div>
+
+  <div class="card explain">
+    <h2>4. What does this gate do?</h2>
+    <div id="explain"></div>
+  </div>
+</main>
+
+<script>
+const GATES = {
+  AND:  { run:(a,b)=>a&b,        expr:"A · B",    inputs:2,
+          rule:"Output is 1 only when <b>both</b> inputs are 1.",
+          info:"Think of two switches in a row. The lamp glows only if both are ON. Example: a door opens only if the card is valid AND the PIN is correct." },
+  OR:   { run:(a,b)=>a|b,        expr:"A + B",    inputs:2,
+          rule:"Output is 1 when <b>at least one</b> input is 1.",
+          info:"Think of two switches side by side. If any one is ON, the lamp glows. Example: an alarm rings if the door OR the window opens." },
+  NOT:  { run:(a)=>a?0:1,        expr:"A'",       inputs:1,
+          rule:"Output is the <b>opposite</b> of the input.",
+          info:"It flips the signal: 1 becomes 0 and 0 becomes 1. It is also called an inverter. It has only one input." },
+  NAND: { run:(a,b)=>(a&b)?0:1,  expr:"(A · B)'", inputs:2,
+          rule:"Output is 0 only when <b>both</b> inputs are 1 (AND, then flipped).",
+          info:"NAND = AND followed by NOT. It is called a universal gate because every other gate can be built using only NAND gates." },
+  NOR:  { run:(a,b)=>(a|b)?0:1,  expr:"(A + B)'", inputs:2,
+          rule:"Output is 1 only when <b>both</b> inputs are 0 (OR, then flipped).",
+          info:"NOR = OR followed by NOT. It is also a universal gate." },
+  XOR:  { run:(a,b)=>a^b,        expr:"A ⊕ B",    inputs:2,
+          rule:"Output is 1 when the inputs are <b>different</b>.",
+          info:"XOR means exclusive OR: 1 only if exactly one input is 1. It is used in adders and in checking whether two bits are equal." },
+  XNOR: { run:(a,b)=>(a^b)?0:1,  expr:"(A ⊕ B)'", inputs:2,
+          rule:"Output is 1 when the inputs are the <b>same</b>.",
+          info:"XNOR is XOR flipped. It is used as an equality checker: output 1 means both bits match." }
+};
+
+let current = "AND";
+let A = 0, B = 0;
+const $ = id => document.getElementById(id);
+
+function buildButtons(){
+  const box = $("gateButtons");
+  Object.keys(GATES).forEach(name=>{
+    const btn = document.createElement("button");
+    btn.textContent = name;
+    btn.onclick = () => { current = name; update(); };
+    btn.dataset.gate = name;
+    box.appendChild(btn);
+  });
+}
+
+function setPin(id, value){
+  const g = $(id);
+  g.querySelector("circle").classList.toggle("on", value === 1);
+  g.querySelector("text").textContent = value;
+}
+
+function buildTable(){
+  const g = GATES[current];
+  let html = "";
+  if (g.inputs === 1){
+    html += "<tr><th>A</th><th>Output</th></tr>";
+    [0,1].forEach(a=>{
+      html += `<tr data-a="${a}"><td>${a}</td><td>${g.run(a)}</td></tr>`;
+    });
+  } else {
+    html += "<tr><th>A</th><th>B</th><th>Output</th></tr>";
+    [0,1].forEach(a=>[0,1].forEach(b=>{
+      html += `<tr data-a="${a}" data-b="${b}"><td>${a}</td><td>${b}</td><td>${g.run(a,b)}</td></tr>`;
+    }));
+  }
+  $("table").innerHTML = html;
+}
+
+function update(){
+  const g = GATES[current];
+  const single = g.inputs === 1;
+  const out = single ? g.run(A) : g.run(A, B);
+
+  document.querySelectorAll("#gateButtons button").forEach(b=>{
+    b.classList.toggle("active", b.dataset.gate === current);
+  });
+
+  $("rule").innerHTML = "<p><b>" + current + " gate:</b> " + g.rule + "</p>";
+  $("gateName").textContent = current;
+  $("explain").innerHTML =
+    "<h3>How it works</h3><p>" + g.info + "</p>" +
+    "<h3>Boolean expression</h3><p>Y = " + g.expr + "</p>";
+  $("result").innerHTML = single
+    ? `A = <b>${A}</b> → Output = <b>${out}</b>`
+    : `A = <b>${A}</b>, B = <b>${B}</b> → Output = <b>${out}</b>`;
+
+  setPin("pinA", A);
+  setPin("pinB", B);
+  $("pinB").style.display = single ? "none" : "";
+  $("wireB").style.display = single ? "none" : "";
+  $("labelB").style.display = single ? "none" : "";
+  $("wireA").classList.toggle("on", A === 1);
+  $("wireB").classList.toggle("on", B === 1);
+  $("wireY").classList.toggle("on", out === 1);
+  $("bulb").classList.toggle("on", out === 1);
+  $("outText").textContent = out;
+
+  buildTable();
+  document.querySelectorAll("#table tr[data-a]").forEach(row=>{
+    const sameA = Number(row.dataset.a) === A;
+    const sameB = single || Number(row.dataset.b) === B;
+    row.classList.toggle("now", sameA && sameB);
+  });
+}
+
+function makeToggle(id, flip){
+  const el = $(id);
+  el.addEventListener("click", flip);
+  el.addEventListener("keydown", e=>{
+    if (e.key === "Enter" || e.key === " "){ e.preventDefault(); flip(); }
+  });
+}
+makeToggle("pinA", ()=>{ A = A ? 0 : 1; update(); });
+makeToggle("pinB", ()=>{ B = B ? 0 : 1; update(); });
+
+buildButtons();
+update();
+</script>
+</body>
+</html>
